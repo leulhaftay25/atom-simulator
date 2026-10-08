@@ -1,0 +1,737 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Atom Simulator 3.9.2 - VSEPR Structures</title>
+<style>
+    body {
+        margin: 0; display: flex; height: 100vh; background: #0a0a0f;
+        color: #e0e0e0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        overflow: hidden; user-select: none;
+    }
+    #sidebar {
+        width: 320px; background: #121218; border-right: 1px solid #282836;
+        padding: 15px; display: flex; flex-direction: column; gap: 10px; box-sizing: border-box;
+        z-index: 10;
+    }
+    h2 { margin: 0; font-size: 18px; color: #39ff14; letter-spacing: 0.5px; }
+    p { font-size: 11px; color: #9090a0; line-height: 1.3; margin: 0; }
+    
+    .legend {
+        background: #181822; padding: 8px; border-radius: 6px; font-size: 11px;
+        border: 1px solid #282836; display: flex; flex-direction: column; gap: 4px;
+    }
+    .legend-item { display: flex; align-items: center; gap: 6px; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+
+    .control-group {
+        background: #181822; padding: 10px; border-radius: 6px; border: 1px solid #282836;
+        display: flex; flex-direction: column; gap: 6px;
+    }
+    label { font-size: 11px; color: #00ffcc; font-weight: bold; display: flex; justify-content: space-between; align-items: center; }
+    input[type=range] { width: 100%; cursor: pointer; }
+
+    .element-grid {
+        display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px;
+        overflow-y: auto; flex-grow: 1; padding-right: 5px;
+        background: #181822; padding: 8px; border-radius: 6px; border: 1px solid #282836;
+    }
+    .el-btn {
+        background: #20202c; border: 1px solid #333345; color: white;
+        padding: 6px 0; border-radius: 4px; cursor: pointer; font-size: 10px;
+        transition: 0.15s; text-align: center; font-weight: bold; position: relative;
+    }
+    .el-btn.metal { border-bottom: 2px solid #e67e22; }
+    .el-btn.nonmetal { border-bottom: 2px solid #3498db; }
+    .el-btn.metalloid { border-bottom: 2px solid #16a085; }
+    .el-btn.radioactive::after {
+        content: '☢'; position: absolute; top: 1px; right: 2px; color: #39ff14; font-size: 8px;
+    }
+    .el-btn:hover { background: #2f2f42; border-color: #39ff14; }
+    .el-btn.selected { background: #39ff14; color: #000; border-color: #fff; }
+    
+    .btn-group { display: flex; gap: 8px; }
+    .action-btn {
+        padding: 8px; background: #ff4757; color: white; border: none;
+        border-radius: 6px; cursor: pointer; font-weight: bold; flex: 1; font-size: 11px;
+    }
+    .action-btn.pulse { background: #39ff14; color: #000; }
+    .action-btn.neutral { background: #00d2d3; color: #000; }
+    .action-btn:hover { opacity: 0.9; }
+    
+    #canvas-container { flex-grow: 1; position: relative; }
+    canvas { width: 100%; height: 100%; cursor: crosshair; display: block; }
+</style>
+</head>
+<body>
+
+<div id="sidebar">
+    <h2>Atom Simulator 3.9.1</h2>
+    <p>Stable metal lattices, full radiation physics, and structural VSEPR angular repulsion for covalent compounds.</p>
+    
+    <div class="legend">
+        <div class="legend-item"><span class="dot" style="background:#e67e22;"></span> <b>Metal Lattice:</b> Dampened rotation</div>
+        <div class="legend-item"><span class="dot" style="background:#00ffff;"></span> <b>Covalent Bonds:</b> VSEPR Structured</div>
+        <div class="legend-item"><span class="dot" style="background:#ff00ff;"></span> <b>Ionic Bond:</b> Electrostatic forces</div>
+        <div class="legend-item"><span class="dot" style="background:#ff3300;"></span> <b>Alpha/Beta/Rad:</b> Particle dynamics</div>
+    </div>
+
+    <div class="control-group">
+        <label>System Heat: <span id="heat-val">60</span> K</label>
+        <input type="range" id="heatSlider" min="0" max="1000" value="60">
+        
+        <label>Decay Rate: <span id="decay-val">20</span>%</label>
+        <input type="range" id="decaySlider" min="0" max="100" value="20">
+
+        <label style="margin-top: 4px; cursor: pointer;">
+            Show Valence e⁻:
+            <input type="checkbox" id="showValenceToggle" checked style="cursor: pointer; width: 16px; height: 16px; accent-color: #00ffcc;">
+        </label>
+    </div>
+
+    <div class="btn-group">
+        <button class="action-btn pulse" id="btn-pulse">⚡ Pulse Rad</button>
+        <button class="action-btn neutral" id="btn-reset-ions">Neutralize</button>
+        <button class="action-btn" id="btn-clear">Clear</button>
+    </div>
+
+    <div class="element-grid" id="element-grid"></div>
+</div>
+
+<div id="canvas-container">
+    <canvas id="simCanvas"></canvas>
+</div>
+
+<script>
+    const canvas = document.getElementById('simCanvas');
+    const ctx = canvas.getContext('2d');
+    
+    function resize() { 
+        canvas.width = canvas.parentElement.clientWidth; 
+        canvas.height = canvas.parentElement.clientHeight; 
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    const heatSlider = document.getElementById('heatSlider');
+    const heatVal = document.getElementById('heat-val');
+    heatSlider.addEventListener('input', (e) => { heatVal.innerText = e.target.value; });
+
+    const decaySlider = document.getElementById('decaySlider');
+    const decayVal = document.getElementById('decay-val');
+    decaySlider.addEventListener('input', (e) => { decayVal.innerText = e.target.value; });
+
+    const showValenceToggle = document.getElementById('showValenceToggle');
+
+    const SYMBOLS = [
+        "H","He","Li","Be","B","C","N","O","F","Ne","Na","Mg","Al","Si","P","S","Cl","Ar",
+        "K","Ca","Sc","Ti","V","Cr","Mn","Fe","Co","Ni","Cu","Zn","Ga","Ge","As","Se","Br","Kr",
+        "Rb","Sr","Y","Zr","Nb","Mo","Tc","Ru","Rh","Pd","Ag","Cd","In","Sn","Sb","Te","I","Xe",
+        "Cs","Ba","La","Ce","Pr","Nd","Pm","Sm","Eu","Gd","Tb","Dy","Ho","Er","Tm","Yb","Lu",
+        "Hf","Ta","W","Re","Os","Ir","Pt","Au","Hg","Tl","Pb","Bi","Po","At","Rn",
+        "Fr","Ra","Ac","Th","Pa","U","Np","Pu","Am","Cm","Bk","Cf","Es","Fm","Md","No","Lr",
+        "Rf","Db","Sg","Bh","Hs","Mt","Ds","Rg","Cn","Nh","Fl","Mc","Lv","Ts","Og"
+    ];
+
+    function getElementData(z) {
+        let symbol = SYMBOLS[z-1] || "X";
+        let mass = Math.max(1, Math.round(z * 2.15));
+        let radius = Math.min(24, 10 + Math.sqrt(z) * 1.2);
+        
+        let isRadioactive = (z > 82 || z === 43 || z === 61);
+        let isMetal = false;
+        let isMetalloid = false;
+        let valence = 1;
+        let maxPosCharge = 0;
+        let maxNegCharge = 0;
+        let color = "#88aaff";
+
+        if (z === 1) {
+            symbol = "H"; isMetal = false; valence = 1; maxPosCharge = 1; maxNegCharge = 1; color = "#ffffff";
+        } else if (z === 2) {
+            symbol = "He"; isMetal = false; valence = 2; maxPosCharge = 0; maxNegCharge = 0; color = "#d9ffff";
+        } else if ([3, 11, 19, 37, 55, 87].includes(z)) {
+            isMetal = true; valence = 1; maxPosCharge = 1; maxNegCharge = 0; color = "#e67e22";
+        } else if ([4, 12, 20, 38, 56, 88].includes(z)) {
+            isMetal = true; valence = 2; maxPosCharge = 2; maxNegCharge = 0; color = "#f39c12";
+        } else if ((z >= 21 && z <= 30) || (z >= 39 && z <= 48) || (z >= 72 && z <= 80) || (z >= 104 && z <= 112)) {
+            isMetal = true; 
+            valence = [24, 29, 42, 47, 79].includes(z) ? 1 : 2;
+            maxPosCharge = (z === 26 || z === 27 || z === 28) ? 3 : 2;
+            maxNegCharge = 0; color = "#d35400";
+        } else if ((z >= 57 && z <= 71) || (z >= 89 && z <= 103)) {
+            isMetal = true; valence = 2; maxPosCharge = 3; maxNegCharge = 0; color = "#9b59b6";
+        } else if ([13, 31, 49, 50, 81, 82, 83, 113, 114, 115, 116].includes(z)) {
+            isMetal = true;
+            if ([13, 31, 49, 81, 113].includes(z)) { valence = 3; maxPosCharge = 3; }
+            else if ([50, 82, 114].includes(z)) { valence = 4; maxPosCharge = 4; }
+            else { valence = 5; maxPosCharge = 3; }
+            maxNegCharge = 0; color = "#e67e22";
+        } else if ([5, 14, 32, 33, 51, 52, 84].includes(z)) {
+            isMetal = false; isMetalloid = true;
+            if (z === 5) { valence = 3; maxPosCharge = 3; maxNegCharge = 0; }
+            else if (z === 14 || z === 32) { valence = 4; maxPosCharge = 4; maxNegCharge = 4; }
+            else if (z === 33 || z === 51) { valence = 5; maxPosCharge = 3; maxNegCharge = 3; }
+            else { valence = 6; maxPosCharge = 2; maxNegCharge = 2; }
+            color = "#16a085";
+        } else if ([6, 7, 8, 15, 16, 34].includes(z)) {
+            isMetal = false;
+            if (z === 6) { valence = 4; maxPosCharge = 4; maxNegCharge = 4; color = "#7f8c8d"; }
+            else if (z === 7 || z === 15) { valence = 5; maxPosCharge = 3; maxNegCharge = 3; color = "#2980b9"; }
+            else { valence = 6; maxPosCharge = 2; maxNegCharge = 2; color = "#e74c3c"; }
+        } else if ([9, 17, 35, 53, 85, 117].includes(z)) {
+            isMetal = false; valence = 7; maxPosCharge = 1; maxNegCharge = 1; color = "#2ecc71";
+        } else if ([10, 18, 36, 54, 86, 118].includes(z)) {
+            isMetal = false; valence = 8; maxPosCharge = 0; maxNegCharge = 0; color = "#aaffff";
+        }
+
+        if (isRadioactive) color = "#a855f7";
+        let maxBonds = isMetal ? 0 :( 8 - valence <= 4 ? 8 - valence : valence);
+        if (z === 1) maxBonds = 1;
+
+        return { z, symbol, mass, radius, valence, isMetal, isMetalloid, maxPosCharge, maxNegCharge, maxBonds, isRadioactive, color };
+    }
+
+    let selectedZ = 11; 
+    let atoms = [];
+    let covalentBonds = [];
+    let particles = [];
+
+    const grid = document.getElementById('element-grid');
+    for (let i = 1; i <= 118; i++) {
+        let el = getElementData(i);
+        let btn = document.createElement('div');
+        let typeClass = el.isMetal ? 'metal' : (el.isMetalloid ? 'metalloid' : 'nonmetal');
+        btn.className = `el-btn ${i === selectedZ ? 'selected' : ''} ${typeClass} ${el.isRadioactive ? 'radioactive' : ''}`;
+        btn.innerText = `${i}\n${el.symbol}`;
+        btn.onclick = () => {
+            document.querySelectorAll('.el-btn').forEach(b => b.classList.remove('selected'));
+            btn.classList.add('selected'); selectedZ = i;
+        };
+        grid.appendChild(btn);
+    }
+
+    document.getElementById('btn-clear').onclick = () => { atoms = []; covalentBonds = []; particles = []; };
+    document.getElementById('btn-reset-ions').onclick = () => { atoms.forEach(a => a.charge = 0); };
+    document.getElementById('btn-pulse').onclick = () => {
+        atoms.forEach(a => {
+            if (a.isRadioactive) {
+                emitParticle(a, 'alpha'); emitParticle(a, 'beta');
+                emitParticle(a, 'gamma'); emitParticle(a, 'neutron');
+            }
+        });
+    };
+
+    let isMouseDown = false;
+    let lastSpawnTime = 0;
+
+    function spawnAtomAt(x, y) {
+        let el = getElementData(selectedZ);
+        let spawnX = x, spawnY = y;
+        
+        for (let iter = 0; iter < 10; iter++) {
+            let resolved = true;
+            for (let a of atoms) {
+                let dx = spawnX - a.x, dy = spawnY - a.y;
+                let dist = Math.hypot(dx, dy);
+                let minDist = a.radius + el.radius;
+                
+                if (dist < minDist) {
+                    resolved = false;
+                    let angle = dist === 0 ? Math.random() * Math.PI * 2 : Math.atan2(dy, dx);
+                    spawnX = a.x + Math.cos(angle) * minDist;
+                    spawnY = a.y + Math.sin(angle) * minDist;
+                }
+            }
+            if (resolved) break;
+        }
+
+        atoms.push({
+            id: Math.random(),
+            ...el,
+            x: spawnX, y: spawnY,
+            vx: 0, vy: 0, charge: 0,
+            orbitAngle: Math.random() * Math.PI * 2
+        });
+    }
+
+    // Mouse Events[cite: 1]
+    canvas.addEventListener('mousedown', (e) => {
+        isMouseDown = true;
+        const rect = canvas.getBoundingClientRect();
+        spawnAtomAt(e.clientX - rect.left, e.clientY - rect.top);
+        lastSpawnTime = Date.now();
+    });
+
+    canvas.addEventListener('mousemove', (e) => {
+        if (!isMouseDown) return;
+        if (Date.now() - lastSpawnTime > 100) { 
+            const rect = canvas.getBoundingClientRect();
+            spawnAtomAt(e.clientX - rect.left, e.clientY - rect.top);
+            lastSpawnTime = Date.now();
+        }
+    });
+
+    window.addEventListener('mouseup', () => isMouseDown = false);
+    window.addEventListener('mouseleave', () => isMouseDown = false);
+
+    // Touch Events
+    canvas.addEventListener('touchstart', (e) => {
+        e.preventDefault(); 
+        isMouseDown = true;
+        const rect = canvas.getBoundingClientRect();
+        const touch = e.touches[0];
+        spawnAtomAt(touch.clientX - rect.left, touch.clientY - rect.top);
+        lastSpawnTime = Date.now();
+    }, { passive: false });
+
+    canvas.addEventListener('touchmove', (e) => {
+        e.preventDefault(); 
+        if (!isMouseDown) return;
+        if (Date.now() - lastSpawnTime > 100) { 
+            const rect = canvas.getBoundingClientRect();
+            const touch = e.touches[0];
+            spawnAtomAt(touch.clientX - rect.left, touch.clientY - rect.top);
+            lastSpawnTime = Date.now();
+        }
+    }, { passive: false });
+
+    window.addEventListener('touchend', () => isMouseDown = false);
+    window.addEventListener('touchcancel', () => isMouseDown = false);
+
+    function changeElement(atom, newZ) {
+        newZ = Math.max(1, Math.min(118, newZ));
+        Object.assign(atom, getElementData(newZ));
+        atom.charge = 0;
+        covalentBonds = covalentBonds.filter(b => b.a1.id !== atom.id && b.a2.id !== atom.id);
+    }
+
+    function emitParticle(sourceAtom, type) {
+        let angle = Math.random() * Math.PI * 2;
+        let p = { type, life: 180, age: 0, sourceId: sourceAtom.id, trail: [] };
+        let pMass = 1, pSpeed = 8;
+        
+        if (type === 'alpha') { pSpeed = 6; p.radius = 4; p.color = '#ff3300'; pMass = 4; }
+        if (type === 'beta') { pSpeed = 13; p.radius = 2.5; p.color = '#00ffff'; p.life = 100; pMass = 0.1; }
+        if (type === 'gamma') { pSpeed = 18; p.radius = 2; p.color = '#ff00ff'; p.life = 70; pMass = 0.01; }
+        if (type === 'neutron') { pSpeed = 8; p.radius = 3.5; p.color = '#ffffff'; p.life = 200; pMass = 1; }
+        
+        p.x = sourceAtom.x + Math.cos(angle) * (sourceAtom.radius + p.radius + 4);
+        p.y = sourceAtom.y + Math.sin(angle) * (sourceAtom.radius + p.radius + 4);
+        p.vx = Math.cos(angle) * pSpeed;
+        p.vy = Math.sin(angle) * pSpeed;
+
+        sourceAtom.vx -= (p.vx * pMass) / sourceAtom.mass;
+        sourceAtom.vy -= (p.vy * pMass) / sourceAtom.mass;
+
+        particles.push(p);
+    }
+
+    function triggerFission(atom) {
+        let z1 = Math.floor(atom.z * 0.4) + Math.floor(Math.random() * 8);
+        let z2 = atom.z - z1;
+        changeElement(atom, z1);
+        atom.vx = (Math.random() - 0.5) * 12; atom.vy = (Math.random() - 0.5) * 12;
+
+        let frag2 = {
+            id: Math.random(), ...getElementData(z2),
+            x: atom.x + 10, y: atom.y + 10,
+            vx: (Math.random() - 0.5) * 12, vy: (Math.random() - 0.5) * 12,
+            charge: 0, orbitAngle: 0
+        };
+        atoms.push(frag2);
+
+        for(let i = 0; i < 3; i++) emitParticle(atom, 'neutron');
+        emitParticle(atom, 'gamma');
+    }
+
+    function getAtomBondCount(atomId) {
+        let count = 0;
+        covalentBonds.forEach(b => {
+            if (b.a1.id === atomId || b.a2.id === atomId) count += b.order;
+        });
+        return count;
+    }
+
+    function loop() {
+        ctx.fillStyle = '#0a0a0f';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        let currentHeat = parseFloat(heatSlider.value);
+        let currentDecayProb = (parseFloat(decaySlider.value) / 100) * 0.03;
+        let showValence = showValenceToggle.checked;
+
+        // Atom Motion & Decay
+        atoms.forEach(a => {
+            a.orbitAngle += 0.04;
+
+            if (currentHeat > 0) {
+                let jitter = (currentHeat / 180) / Math.sqrt(a.mass);
+                a.vx += (Math.random() - 0.5) * jitter;
+                a.vy += (Math.random() - 0.5) * jitter;
+            }
+
+            if (a.isRadioactive && Math.random() < currentDecayProb) {
+                let r = Math.random();
+                if (a.z >= 90 && r < 0.05) triggerFission(a);
+                else if (r < 0.40) { emitParticle(a, 'alpha'); changeElement(a, a.z - 2); }
+                else if (r < 0.75) { emitParticle(a, 'beta'); changeElement(a, a.z + 1); }
+                else emitParticle(a, Math.random() < 0.5 ? 'gamma' : 'neutron');
+            }
+
+            a.x += a.vx; a.y += a.vy;
+            a.vx *= 0.96; a.vy *= 0.96; 
+
+            if (a.x < a.radius) { a.x = a.radius; a.vx *= -0.8; }
+            if (a.x > canvas.width - a.radius) { a.x = canvas.width - a.radius; a.vx *= -0.8; }
+            if (a.y < a.radius) { a.y = a.radius; a.vy *= -0.8; }
+            if (a.y > canvas.height - a.radius) { a.y = canvas.height - a.radius; a.vy *= -0.8; }
+        });
+
+        // Collisions, Ionic Attraction & Progressive Covalent Bonding
+        for (let i = 0; i < atoms.length; i++) {
+            for (let j = i + 1; j < atoms.length; j++) {
+                let a1 = atoms[i], a2 = atoms[j];
+                let dx = a2.x - a1.x, dy = a2.y - a1.y;
+                let dist = Math.max(Math.hypot(dx, dy), 0.1);
+                let minDist = a1.radius + a2.radius;
+
+                if (dist < minDist) {
+                    let overlap = minDist - dist;
+                    let nx = dx / dist, ny = dy / dist;
+                    let totalMass = a1.mass + a2.mass;
+                    
+                    a1.x -= nx * overlap * (a2.mass / totalMass);
+                    a1.y -= ny * overlap * (a2.mass / totalMass);
+                    a2.x += nx * overlap * (a1.mass / totalMass);
+                    a2.y += ny * overlap * (a1.mass / totalMass);
+
+                    let kx = a1.vx - a2.vx, ky = a1.vy - a2.vy;
+                    let approachSpeed = nx * kx + ny * ky;
+                    if (approachSpeed < 0) {
+                        let p = 2 * approachSpeed / totalMass;
+                        a1.vx -= p * a2.mass * nx * 0.8; 
+                        a1.vy -= p * a2.mass * ny * 0.8;
+                        a2.vx += p * a1.mass * nx * 0.8; 
+                        a2.vy += p * a1.mass * ny * 0.8;
+                    }
+
+                    if (a1.isMetal !== a2.isMetal) {
+                        let metal = a1.isMetal ? a1 : a2;
+                        let nonmetal = a1.isMetal ? a2 : a1;
+                        if (metal.charge < metal.maxPosCharge && nonmetal.charge > -nonmetal.maxNegCharge) {
+                            metal.charge++; nonmetal.charge--;
+                        }
+                    }
+                }
+
+                // Electrostatic Attraction
+                if (a1.charge !== 0 && a2.charge !== 0) {
+                    let force = (a1.charge * a2.charge * 120) / (dist * dist);
+                    force = Math.max(-2, Math.min(2, force)); 
+                    a1.vx -= (dx / dist) * force / a1.mass; a1.vy -= (dy / dist) * force / a1.mass;
+                    a2.vx += (dx / dist) * force / a2.mass; a2.vy += (dy / dist) * force / a2.mass;
+
+                    if (a1.charge * a2.charge < 0 && dist < minDist * 2.5) {
+                        ctx.strokeStyle = '#ff00ff'; ctx.lineWidth = 1.5; ctx.setLineDash([4, 4]);
+                        ctx.beginPath(); ctx.moveTo(a1.x, a1.y); ctx.lineTo(a2.x, a2.y); ctx.stroke();
+                        ctx.setLineDash([]);
+                    }
+                }
+
+                // Progressive Covalent Bonding
+                if (!a1.isMetal && !a2.isMetal && a1.charge === 0 && a2.charge === 0) {
+                    let existing = covalentBonds.find(b => (b.a1.id === a1.id && b.a2.id === a2.id) || (b.a1.id === a2.id && b.a2.id === a1.id));
+
+                    if (dist < minDist * 1.3) {
+                        if (!existing) {
+                            let a1Bonds = getAtomBondCount(a1.id);
+                            let a2Bonds = getAtomBondCount(a2.id);
+                            if (a1Bonds < a1.maxBonds && a2Bonds < a2.maxBonds) {
+                                covalentBonds.push({ a1, a2, order: 1, timer: 0 });
+                            }
+                        } else if (existing.order < 3) {
+                            existing.timer++;
+                            let a1Available = a1.maxBonds - (getAtomBondCount(a1.id) - existing.order);
+                            let a2Available = a2.maxBonds - (getAtomBondCount(a2.id) - existing.order);
+                            let maxAllowedOrder = Math.min(3, a1Available, a2Available);
+
+                            if (existing.timer > 90 && existing.order < maxAllowedOrder) {
+                                existing.order++; existing.timer = 0;
+                            }
+                        }
+                    } else if (existing) {
+                        existing.timer = Math.max(0, existing.timer - 0.5);
+                    }
+                }
+            }
+        }
+
+        // Metallic Bonding
+        let visitedMetals = new Set();
+        let bondedMetals = new Set();
+        
+        atoms.forEach(a => {
+            if (a.isMetal && !visitedMetals.has(a.id)) {
+                let cluster = [];
+                let queue = [a];
+                visitedMetals.add(a.id);
+
+                while (queue.length > 0) {
+                    let curr = queue.shift();
+                    cluster.push(curr);
+
+                    atoms.forEach(other => {
+                        if (other.isMetal && !visitedMetals.has(other.id)) {
+                            let d = Math.hypot(curr.x - other.x, curr.y - other.y);
+                            if (d < (curr.radius + other.radius) * 1.5) {
+                                visitedMetals.add(other.id);
+                                queue.push(other);
+                            }
+                        }
+                    });
+                }
+
+                if (cluster.length >= 2) {
+                    cluster.forEach(m => bondedMetals.add(m.id));
+                    
+                    ctx.strokeStyle = 'rgba(230, 126, 34, 0.4)';
+                    ctx.lineWidth = 2;
+                    
+                    for (let i = 0; i < cluster.length; i++) {
+                        for (let j = i + 1; j < cluster.length; j++) {
+                            let m1 = cluster[i], m2 = cluster[j];
+                            let dx = m2.x - m1.x, dy = m2.y - m1.y;
+                            let dist = Math.hypot(dx, dy);
+                            let targetDist = m1.radius + m2.radius + 1.5;
+
+                            if (dist < targetDist * 1.35) {
+                                let force = (dist - targetDist) * 0.12;
+                                let nx = dx / dist, ny = dy / dist;
+                                
+                                m1.vx += nx * force / m1.mass; m1.vy += ny * force / m1.mass;
+                                m2.vx -= nx * force / m2.mass; m2.vy -= ny * force / m2.mass;
+
+                                let rvx = m2.vx - m1.vx;
+                                let rvy = m2.vy - m1.vy;
+                                let damping = 0.12;
+                                m1.vx += rvx * damping; m1.vy += rvy * damping;
+                                m2.vx -= rvx * damping; m2.vy -= rvy * damping;
+
+                                ctx.beginPath(); ctx.moveTo(m1.x, m1.y); ctx.lineTo(m2.x, m2.y); ctx.stroke();
+                            }
+                        }
+                    }
+
+                    let electronCount = cluster.length * 3;
+                    for (let e = 0; e < electronCount; e++) {
+                        let parent1 = cluster[e % cluster.length];
+                        let parent2 = cluster[(e + 1) % cluster.length];
+                        let t = (Date.now() * 0.003 + e * 1.2) % 1;
+                        let ex = parent1.x + (parent2.x - parent1.x) * t + Math.sin(t * Math.PI * 2 + e) * 5;
+                        let ey = parent1.y + (parent2.y - parent1.y) * t + Math.cos(t * Math.PI * 2 + e) * 5;
+
+                        ctx.beginPath(); ctx.arc(ex, ey, 2, 0, Math.PI * 2);
+                        ctx.fillStyle = '#00ffff'; ctx.shadowBlur = 6; ctx.shadowColor = '#00ffff';
+                        ctx.fill(); ctx.shadowBlur = 0;
+                    }
+                }
+            }
+        });
+
+        // Progressive Covalent Bonds Rendering & Distance Physics
+        for (let i = covalentBonds.length - 1; i >= 0; i--) {
+            let b = covalentBonds[i];
+            let dx = b.a2.x - b.a1.x, dy = b.a2.y - b.a1.y;
+            let dist = Math.max(Math.hypot(dx, dy), 0.1);
+            let restLen = b.a1.radius + b.a2.radius + 2;
+
+            if (dist > restLen * 2.2 || b.a1.isMetal || b.a2.isMetal) {
+                covalentBonds.splice(i, 1); continue;
+            }
+
+            let strength = 0.18 * b.order;
+            let force = (dist - restLen) * strength;
+            b.a1.vx += (dx / dist) * force / b.a1.mass; b.a1.vy += (dy / dist) * force / b.a1.mass;
+            b.a2.vx -= (dx / dist) * force / b.a2.mass; b.a2.vy -= (dy / dist) * force / b.a2.mass;
+
+            ctx.strokeStyle = '#00ffff'; ctx.lineWidth = 2;
+            let nx = -dy / dist, ny = dx / dist;
+
+            if (b.order === 1) {
+                ctx.beginPath(); ctx.moveTo(b.a1.x, b.a1.y); ctx.lineTo(b.a2.x, b.a2.y); ctx.stroke();
+            } else if (b.order === 2) {
+                let offset = 3;
+                ctx.beginPath();
+                ctx.moveTo(b.a1.x + nx * offset, b.a1.y + ny * offset);
+                ctx.lineTo(b.a2.x + nx * offset, b.a2.y + ny * offset);
+                ctx.moveTo(b.a1.x - nx * offset, b.a1.y - ny * offset);
+                ctx.lineTo(b.a2.x - nx * offset, b.a2.y - ny * offset);
+                ctx.stroke();
+            } else if (b.order === 3) {
+                let offset = 4.5;
+                ctx.beginPath();
+                ctx.moveTo(b.a1.x, b.a1.y); ctx.lineTo(b.a2.x, b.a2.y);
+                ctx.moveTo(b.a1.x + nx * offset, b.a1.y + ny * offset);
+                ctx.lineTo(b.a2.x + nx * offset, b.a2.y + ny * offset);
+                ctx.moveTo(b.a1.x - nx * offset, b.a1.y - ny * offset);
+                ctx.lineTo(b.a2.x - nx * offset, b.a2.y - ny * offset);
+                ctx.stroke();
+            }
+        }
+
+        // ==========================================
+        // NEW: 2D VSEPR / Angular Repulsion Property
+        // ==========================================
+        atoms.forEach(centralAtom => {
+            if (centralAtom.isMetal) return; 
+            
+            let bondedNeighbors = [];
+            covalentBonds.forEach(b => {
+                if (b.a1.id === centralAtom.id) bondedNeighbors.push(b.a2);
+                if (b.a2.id === centralAtom.id) bondedNeighbors.push(b.a1);
+            });
+
+            if (bondedNeighbors.length > 1) {
+                let currentBonds = getAtomBondCount(centralAtom.id);
+                // Calculate unbonded valence electron pairs (Lone Pairs)
+                let loneElectronPairs = Math.floor(Math.max(0, centralAtom.valence - centralAtom.charge - currentBonds) / 2);
+                
+                // 1. Bond-Bond Repulsion: Push bonded atoms away from each other
+                for (let i = 0; i < bondedNeighbors.length; i++) {
+                    for (let j = i + 1; j < bondedNeighbors.length; j++) {
+                        let n1 = bondedNeighbors[i], n2 = bondedNeighbors[j];
+                        let dx = n2.x - n1.x, dy = n2.y - n1.y;
+                        let dist = Math.max(Math.hypot(dx, dy), 0.1);
+                        
+                        let force = 60 / (dist * dist);
+                        
+                        n1.vx -= (dx / dist) * force / n1.mass;
+                        n1.vy -= (dy / dist) * force / n1.mass;
+                        n2.vx += (dx / dist) * force / n2.mass;
+                        n2.vy += (dy / dist) * force / n2.mass;
+                    }
+                }
+                
+                // 2. Lone Pair Repulsion (VSEPR Bending Force)
+                // If the central atom has lone pairs, it pushes itself away from the center of its bonds
+                if (loneElectronPairs > 0 && bondedNeighbors.length >= 2) {
+                    let midX = 0, midY = 0;
+                    bondedNeighbors.forEach(n => { midX += n.x; midY += n.y; });
+                    midX /= bondedNeighbors.length;
+                    midY /= bondedNeighbors.length;
+                    
+                    let pushDx = centralAtom.x - midX;
+                    let pushDy = centralAtom.y - midY;
+                    let pushDist = Math.max(Math.hypot(pushDx, pushDy), 0.1);
+                    
+                    let bendForce = 0.8 * loneElectronPairs;
+                    centralAtom.vx += (pushDx / pushDist) * (bendForce / centralAtom.mass);
+                    centralAtom.vy += (pushDy / pushDist) * (bendForce / centralAtom.mass);
+                    
+                    // Apply Newton's third law to the neighbors
+                    bondedNeighbors.forEach(n => {
+                        n.vx -= (pushDx / pushDist) * (bendForce / bondedNeighbors.length / n.mass);
+                        n.vy -= (pushDy / pushDist) * (bendForce / bondedNeighbors.length / n.mass);
+                    });
+                }
+            }
+        });
+        // ==========================================
+
+        // Render Atoms
+        atoms.forEach(a => {
+            ctx.beginPath(); ctx.arc(a.x, a.y, a.radius, 0, Math.PI * 2);
+            ctx.fillStyle = a.color; ctx.fill();
+
+            if (a.charge > 0) { ctx.strokeStyle = '#ff3300'; ctx.lineWidth = 3; ctx.stroke(); }
+            else if (a.charge < 0) { ctx.strokeStyle = '#00ffff'; ctx.lineWidth = 3; ctx.stroke(); }
+            else { ctx.strokeStyle = a.isRadioactive ? '#39ff14' : '#111'; ctx.lineWidth = 2; ctx.stroke(); }
+
+            ctx.fillStyle = (a.isRadioactive || a.z === 6) ? '#fff' : '#000';
+            ctx.font = 'bold 10px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            let label = a.symbol + (a.charge > 0 ? `⁺${a.charge > 1 ? a.charge : ''}` : (a.charge < 0 ? `⁻${Math.abs(a.charge) > 1 ? Math.abs(a.charge) : ''}` : ''));
+            ctx.fillText(label, a.x, a.y);
+
+            let isActivelyDelocalized = a.isMetal && bondedMetals.has(a.id);
+            if (showValence && !isActivelyDelocalized) {
+                let currentValenceCount = Math.max(0, a.valence - a.charge);
+                if (currentValenceCount > 0) {
+                    let orbitRadius = a.radius + 6;
+                    for (let v = 0; v < currentValenceCount; v++) {
+                        let angle = a.orbitAngle + (v * (Math.PI * 2 / currentValenceCount));
+                        let ex = a.x + Math.cos(angle) * orbitRadius;
+                        let ey = a.y + Math.sin(angle) * orbitRadius;
+
+                        ctx.beginPath(); ctx.arc(ex, ey, 2, 0, Math.PI * 2);
+                        ctx.fillStyle = '#ffffff'; ctx.shadowBlur = 4; ctx.shadowColor = '#00ffff';
+                        ctx.fill(); ctx.shadowBlur = 0;
+                    }
+                }
+            }
+        });
+
+        // Render Radiation Particles & Collisions
+        for (let i = particles.length - 1; i >= 0; i--) {
+            let p = particles[i];
+            p.trail.push({x: p.x, y: p.y});
+            if (p.trail.length > 5) p.trail.shift();
+
+            p.x += p.vx; p.y += p.vy;
+            p.life--; p.age++;
+
+            ctx.beginPath();
+            for (let t = 0; t < p.trail.length; t++) {
+                let pt = p.trail[t];
+                if (t === 0) ctx.moveTo(pt.x, pt.y);
+                else ctx.lineTo(pt.x, pt.y);
+            }
+            ctx.strokeStyle = p.color; ctx.lineWidth = p.radius * 0.8;
+            ctx.globalAlpha = 0.4; ctx.stroke(); ctx.globalAlpha = 1.0;
+
+            let hit = false;
+            if (p.age > 4) {
+                for (let j = 0; j < atoms.length; j++) {
+                    let a = atoms[j];
+                    if (a.id === p.sourceId) continue;
+
+                    if (Math.hypot(p.x - a.x, p.y - a.y) < a.radius + p.radius) {
+                        hit = true;
+                        
+                        if (p.type === 'alpha') {
+                            a.vx += p.vx * 0.4; a.vy += p.vy * 0.4;
+                            if (a.charge < a.maxPosCharge) a.charge++;
+                        } else if (p.type === 'beta') {
+                            a.vx += p.vx * 0.1; a.vy += p.vy * 0.1;
+                            if (a.charge > -a.maxNegCharge) a.charge--;
+                        } else if (p.type === 'gamma') {
+                            a.vx += p.vx * 0.15; a.vy += p.vy * 0.15;
+                        } else if (p.type === 'neutron') {
+                            if (a.z >= 90) {
+                                triggerFission(a);
+                            } else {
+                                if (Math.random() < 0.35) changeElement(a, a.z + 1);
+                                a.vx += p.vx * 0.25; a.vy += p.vy * 0.25;
+                            }
+                        }
+                        break;
+                    }
+                }
+            }
+
+            ctx.shadowBlur = 8; ctx.shadowColor = p.color;
+            ctx.beginPath(); ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+            ctx.fillStyle = p.color; ctx.fill(); ctx.shadowBlur = 0;
+
+            if (hit || p.life <= 0 || p.x < 0 || p.x > canvas.width || p.y < 0 || p.y > canvas.height) {
+                particles.splice(i, 1);
+            }
+        }
+
+        requestAnimationFrame(loop);
+    }
+    loop();
+</script>
+</body>
+</html>
