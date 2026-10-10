@@ -3,10 +3,36 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Atom Simulator 3.9.2 - VSEPR Structures</title>
-<link rel="icon" href="atoms simulater icon.jpg">    
+<title>Atom Simulator </title>
 <style>
-    body {
+    
+	/* 1. Width and height of the scrollbar */
+::-webkit-scrollbar {
+  width: 12px;               /* Width for vertical scrollbars */
+  height: 12px;              /* Height for horizontal scrollbars */
+}
+
+/* 2. The Track (the background path) */
+::-webkit-scrollbar-track {
+  background: #1e1b4b;       /* Dark indigo track */
+  border-radius: 10px;       /* Smooth rounded edges */
+}
+
+/* 3. The Thumb (the actual draggable slider bar) */
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(45deg, #6366f1, #a855f7); /* Vibrant gradient */
+  border-radius: 10px;       /* Pills shape */
+  border: 3px solid #1e1b4b; /* Creates a clean "floating" space inside the track */
+}
+
+/* 4. Hover effects to make it feel responsive */
+::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(45deg, #4f46e5, #9333ea);
+  cursor: pointer;
+}
+
+
+	body {
         margin: 0; display: flex; height: 100vh; background: #0a0a0f;
         color: #e0e0e0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
         overflow: hidden; user-select: none;
@@ -63,12 +89,54 @@
     
     #canvas-container { flex-grow: 1; position: relative; }
     canvas { width: 100%; height: 100%; cursor: crosshair; display: block; }
+	/* Mobile Landscape Media Query Optimization */
+    @media (max-height: 520px) and (orientation: landscape) {
+        #sidebar {
+            width: 270px;
+            padding: 8px;
+            gap: 5px;
+        }
+        h2 { font-size: 14px; }
+        #sidebar > p { display: none; } /* Hide descriptive text in landscape to free space */
+        
+        .legend {
+            padding: 4px;
+            gap: 2px 8px;
+            flex-direction: row;
+            flex-wrap: wrap;
+            font-size: 9px;
+        }
+        .legend-item { font-size: 9px; gap: 4px; }
+        
+        .control-group {
+            padding: 6px;
+            gap: 3px;
+        }
+        label { font-size: 10px; }
+        input[type=range] { height: 12px; }
+
+        .btn-group { gap: 4px; }
+        .action-btn { padding: 5px 2px; font-size: 9px; }
+
+        .element-grid {
+            grid-template-columns: repeat(5, 1fr); /* 5 columns expand horizontal space */
+            gap: 3px;
+            padding: 4px;
+            min-height: 100px;
+        }
+        .el-btn {
+            padding: 3px 0;
+            font-size: 8.5px;
+            line-height: 1.0;
+        }
+        .el-btn.radioactive::after { font-size: 7px; top: 0; right: 1px; }
+    }
 </style>
 </head>
 <body>
 
 <div id="sidebar">
-    <h2>Atom Simulator 3.9.1</h2>
+    <h2>Atom Simulator</h2>
     <p>Stable metal lattices, full radiation physics, and structural VSEPR angular repulsion for covalent compounds.</p>
     
     <div class="legend">
@@ -369,8 +437,8 @@
 
             if (currentHeat > 0) {
                 let jitter = (currentHeat / 180) / Math.sqrt(a.mass);
-                a.vx += (Math.random() - 0.5) * jitter;
-                a.vy += (Math.random() - 0.5) * jitter;
+                a.vx += (Math.random() - 0.1) * jitter;
+                a.vy += (Math.random() - 0.1) * jitter;
             }
 
             if (a.isRadioactive && Math.random() < currentDecayProb) {
@@ -429,7 +497,7 @@
 
                 // Electrostatic Attraction
                 if (a1.charge !== 0 && a2.charge !== 0) {
-                    let force = (a1.charge * a2.charge * 120) / (dist * dist);
+                    let force = (a1.charge * a2.charge * 120) / (dist ** 2);
                     force = Math.max(-2, Math.min(2, force)); 
                     a1.vx -= (dx / dist) * force / a1.mass; a1.vy -= (dy / dist) * force / a1.mass;
                     a2.vx += (dx / dist) * force / a2.mass; a2.vy += (dy / dist) * force / a2.mass;
@@ -474,17 +542,17 @@
         let bondedMetals = new Set();
         
         atoms.forEach(a => {
-            if (a.isMetal && !visitedMetals.has(a.id)) {
+            if (a.isMetal && !visitedMetals.has(a.id) && a.charge!== a.maxPosCharge ) {
                 let cluster = [];
                 let queue = [a];
                 visitedMetals.add(a.id);
 
                 while (queue.length > 0) {
-                    let curr = queue.shift();
+                    let curr = queue.shift(); // ||
                     cluster.push(curr);
 
                     atoms.forEach(other => {
-                        if (other.isMetal && !visitedMetals.has(other.id)) {
+                        if (other.isMetal && !visitedMetals.has(other.id) &&  other.charge!== other.maxPosCharge ) {
                             let d = Math.hypot(curr.x - other.x, curr.y - other.y);
                             if (d < (curr.radius + other.radius) * 1.5) {
                                 visitedMetals.add(other.id);
@@ -627,7 +695,7 @@
                     let pushDy = centralAtom.y - midY;
                     let pushDist = Math.max(Math.hypot(pushDx, pushDy), 0.1);
                     
-                    let bendForce = 0.8 * loneElectronPairs;
+                    let bendForce = 0.25 * loneElectronPairs;
                     centralAtom.vx += (pushDx / pushDist) * (bendForce / centralAtom.mass);
                     centralAtom.vy += (pushDy / pushDist) * (bendForce / centralAtom.mass);
                     
@@ -636,7 +704,7 @@
                         n.vx -= (pushDx / pushDist) * (bendForce / bondedNeighbors.length / n.mass);
                         n.vy -= (pushDy / pushDist) * (bendForce / bondedNeighbors.length / n.mass);
                     });
-                }
+                } 
             }
         });
         // ==========================================
