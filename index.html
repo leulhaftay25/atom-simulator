@@ -134,6 +134,15 @@
 </style>
 </head>
 <body>
+<!-- 🚨 PITCH-BLACK SPLASH SCREEN OVERLAY -->
+<div id="app-splash-screen" style="
+    position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+    background-color: #000000; display: flex; justify-content: center;
+    align-items: center; z-index: 99999; transition: opacity 0.5s ease;
+">
+    <!-- Links your customized pure black splash image layout asset -->
+    <img src="image_dffe84b4.jpg" style="max-width: 90%; max-height: 90%; object-fit: contain;">
+</div>
 
 <div id="sidebar">
     <h2>Atom Simulator</h2>
@@ -148,7 +157,7 @@
 
     <div class="control-group">
         <label>System Heat: <span id="heat-val">60</span> K</label>
-        <input type="range" id="heatSlider" min="0" max="1000" value="60">
+        <input type="range" id="heatSlider" min="0" max="500" value="60">
         
         <label>Decay Rate: <span id="decay-val">20</span>%</label>
         <input type="range" id="decaySlider" min="0" max="100" value="20">
@@ -173,6 +182,18 @@
 </div>
 
 <script>
+    // Automatically removes the black splash view when the simulation canvas engine is ready
+function dismissSplash() {
+    const splash = document.getElementById("app-splash-screen");
+    if (splash) {
+        splash.style.opacity = "0"; // Triggers the smooth 0.5s fade animation out
+        setTimeout(() => splash.remove(), 500); // Wipes the div element completely out of system memory
+    }
+}
+
+// Call this right before your loops turn on!
+setTimeout(dismissSplash, 2000); // Keeps the splash visible for 2 seconds before launching the sandbox
+
     const canvas = document.getElementById('simCanvas');
     const ctx = canvas.getContext('2d');
     
@@ -437,8 +458,8 @@
 
             if (currentHeat > 0) {
                 let jitter = (currentHeat / 180) / Math.sqrt(a.mass);
-                a.vx += (Math.random() - 0.1) * jitter;
-                a.vy += (Math.random() - 0.1) * jitter;
+                a.vx += (Math.random() - 0.5) * jitter;
+                a.vy += (Math.random() - 0.5) * jitter;
             }
 
             if (a.isRadioactive && Math.random() < currentDecayProb) {
